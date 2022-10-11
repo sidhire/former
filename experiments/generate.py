@@ -174,6 +174,7 @@ def go(arg):
 
         # Compute the loss
         loss = F.nll_loss(output.transpose(2, 1), target, reduction='mean')
+        # loss = F.mse_loss(output.transpose(2, 1), target) # no idea how to use MSE here....
 
         tbw.add_scalar('transformer/train-loss', float(loss.item()) * util.LOG2E, i * arg.batch_size, instances_seen)
         tbw.add_scalar('transformer/time-forward', t, instances_seen)
@@ -203,7 +204,7 @@ def go(arg):
                 if torch.cuda.is_available():
                     seed = seed.cuda()
 
-                sequence = sample_sequence(model, seed=seed, max_context=arg.context, verbose=True, length=arg.sample_length)
+                sequence = sample_sequence(model, seed=seed, max_context=arg.context, verbose=True, length=arg.sample_length, temperature=0)
 
                 if 'spot.txt' in arg.data:
                     sentences = ''.join([chr(n) for n in sequence]).split('.')
@@ -337,10 +338,14 @@ if __name__ == "__main__":
     options = parser.parse_args()
 
     # NOTE We are overriding the passed in args here so that it can be run with the debugger
-    options.num_batches = 1_000
-    options.test_subset = 1_000
-    options.test_every = 200
+    options.num_batches = 10_000
     options.data = 'data/spot.txt'
+    options.embedding_size = 4 # his is 128
+    options.num_heads = 1 # his is 8
+    options.context = 10 # his is 256
+    options.depth = 1 # his is 12 (num of transformer blocks)
+    options.test_subset = 1_000
+    options.test_every = options.num_batches // 10
 
     print('OPTIONS ', options)
 
