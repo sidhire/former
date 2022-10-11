@@ -136,7 +136,7 @@ def go(arg):
     # load the data (validation unless arg.final is true, then test)
     arg.data = here('data/enwik8.gz') if arg.data is None else arg.data
 
-    data_train, data_val, data_test = enwik8(arg.data)
+    data_train, data_val, data_test = enwik8(arg.data, 2_000, 1_000, 1_000) if 'spot.txt' in arg.data else enwik8(arg.data)
     data_train, data_test = (torch.cat([data_train, data_val], dim=0), data_test) \
                             if arg.final else (data_train, data_val)
 
@@ -194,6 +194,10 @@ def go(arg):
                 ## Sample and print a random sequence
 
                 # Slice a random seed from the test data, and sample a continuation from the model.
+                print("HIIIIIIIII")
+                print(data_test.size)
+                print(data_test.size(0))
+                print(arg.context)
                 seedfr = random.randint(0, data_test.size(0) - arg.context)
                 seed = data_test[seedfr:seedfr + arg.context].to(torch.long)
 
@@ -305,6 +309,13 @@ if __name__ == "__main__":
 
     options = parser.parse_args()
 
+    # NOTE We are overriding the passed in args here so that it can be run with the debugger
+    options.num_batches = 1_000
+    options.test_subset = 1_000
+    options.test_every = 200
+    options.data = 'data/spot.txt'
+
     print('OPTIONS ', options)
+
 
     go(options)
