@@ -1,0 +1,10 @@
+{
+	"folders": [
+		{
+			"path": "."
+		}
+	],
+	"settings": {
+		"python.analysis.extraPaths": ["/opt/conda/lib/python3.7/site-packages"]
+	}
+}
