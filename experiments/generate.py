@@ -19,6 +19,8 @@ import random, tqdm, sys, math, gzip
 # NB, the enwik8 data contains tokens from 9 to 240, but well round up to the nearest
 # power of two.
 NUM_TOKENS = 256
+# TODO
+# NUM_TOKENS = 5 # Spot, Doug, Jane, saw, .
 
 def sample(lnprobs, temperature=1.0):
     """
@@ -121,7 +123,8 @@ def sample_sequence(model, seed, max_context, length=600, temperature=0.5, verbo
         sequence = torch.cat([sequence, c[None]], dim=0) # Append the sampled token to the sequence
 
     print()
-    return seed
+    # return seed
+    return sequence
 
 def go(arg):
 
@@ -148,7 +151,7 @@ def go(arg):
     opt = torch.optim.Adam(lr=arg.lr, params=model.parameters())
 
     # Linear learning rate warmup
-    sch = torch.optim.lr_scheduler.LambdaLR(opt, lambda i: min(i / (arg.lr_warmup / arg.batch_size), 1.0))
+    # sch = torch.optim.lr_scheduler.LambdaLR(opt, lambda i: min(i / (arg.lr_warmup / arg.batch_size), 1.0))
 
     # Training loop
     # -- We don't loop over the data, instead we sample a batch of random subsequences each time. This is not strictly
@@ -179,11 +182,11 @@ def go(arg):
 
         # clip gradients
         # -- If the total gradient vector has a length > x, we clip it back down to x.
-        if arg.gradient_clipping > 0.0:
-            nn.utils.clip_grad_norm_(model.parameters(), arg.gradient_clipping)
+        # if arg.gradient_clipping > 0.0:
+        #     nn.utils.clip_grad_norm_(model.parameters(), arg.gradient_clipping)
 
         opt.step() # stochastic gradient descent step
-        sch.step() # update the learning rate
+        # sch.step() # update the learning rate
 
         # Validate every `arg.test_every` steps. First we compute the
         # compression on the validation data (or a subset),
@@ -194,17 +197,41 @@ def go(arg):
                 ## Sample and print a random sequence
 
                 # Slice a random seed from the test data, and sample a continuation from the model.
-                print("HIIIIIIIII")
-                print(data_test.size)
-                print(data_test.size(0))
-                print(arg.context)
                 seedfr = random.randint(0, data_test.size(0) - arg.context)
                 seed = data_test[seedfr:seedfr + arg.context].to(torch.long)
 
                 if torch.cuda.is_available():
                     seed = seed.cuda()
 
-                sample_sequence(model, seed=seed, max_context=arg.context, verbose=True, length=arg.sample_length)
+                sequence = sample_sequence(model, seed=seed, max_context=arg.context, verbose=True, length=arg.sample_length)
+
+                if 'spot.txt' in arg.data:
+                    sentences = ''.join([chr(n) for n in sequence]).split('.')
+                    malformed_count = 0
+                    for sentence in sentences:
+                        if len(sentence) != 3:
+                            malformed_count += 1
+                            continue
+
+                        malformed = False
+                        if sentence[0] not in 'SDJ':
+                            malformed = True
+                        if sentence[2] not in 'SDJ':
+                            malformed = True
+                        if sentence[0] == sentence[2]:
+                            malformed = True
+                        if sentence[1] != 's':
+                            malformed = True
+                        
+                        if malformed:
+                            malformed_count += 1
+                    
+                    spot_accuracy = 1 - malformed_count / len(sentences)
+
+                    tbw.add_scalar(f'transformer/spot-accuracy', spot_accuracy)
+                    
+                    print(f"ACCURACY: {spot_accuracy * 100 : .0f}% of {len(sentences)} sentences")
+
 
                 ## Compute validation bits per byte
 
