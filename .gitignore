@@ -1,0 +1,6 @@
+.data/
+build/
+dist/
+*.egg-info
+runs/
+**/__pycache__
