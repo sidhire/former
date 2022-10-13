@@ -511,14 +511,14 @@ class TransformerBlock(nn.Module):
 
         attended = self.attention(x)
 
-        x = self.norm1(attended + x)
+        # x = self.norm1(attended + x)
 
-        x = self.do(x)
+        # x = self.do(x)
 
-        fedforward = self.ff(x)
+        # fedforward = self.ff(x)
 
-        x = self.norm2(fedforward + x)
+        # x = self.norm2(fedforward + x)
 
-        x = self.do(x)
+        # x = self.do(x)
 
         return x
