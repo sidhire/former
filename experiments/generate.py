@@ -102,7 +102,7 @@ def sample_batch(data, length, batch_size):
 
     return inputs, target
 
-def sample_sequence(model, seed, max_context, length=600, temperature=0.5, verbose=False, int_to_token=None):
+def sample_sequence(model, seed, max_context, length=600, temperature=0.5, verbose=False, int_to_token=None, training_data_char_str=None):
     """
     Sequentially samples a sequence from the model, token by token.
 
@@ -118,7 +118,7 @@ def sample_sequence(model, seed, max_context, length=600, temperature=0.5, verbo
     sequence = seed.detach().clone()
 
     if verbose: # Print the seed, surrounded by square brackets
-        print('~~~~[', end='', flush=True)
+        print('~~~~~~~~[', end='', flush=True)
         for c in seed:
             if int_to_token:
                 i = c.item()
@@ -126,8 +126,10 @@ def sample_sequence(model, seed, max_context, length=600, temperature=0.5, verbo
                 print(token, end=' ', flush=True)
             else:
                 print(str(chr(c)), end='', flush=True)
-        print(']~~~~', end='', flush=True)
+        print(']~~~~~~~~', end='', flush=True)
 
+    if int_to_token:
+        last_sentence_ints = []
     for _ in range(length):
 
         # Input is the tail end of the sampled sequence (as many tokens as the model can handle)
@@ -142,8 +144,16 @@ def sample_sequence(model, seed, max_context, length=600, temperature=0.5, verbo
         if verbose:
             if int_to_token:
                 i = c.item()
+                last_sentence_ints.append(i)
                 token = int_to_token[i] if i in int_to_token else '☐'
                 print(token, end=' ', flush=True)
+
+                if token == '.':
+                    # convert the training data to a char string. also convert the generated sentence to a char string. see if one contains the other.
+                    char_str = ''.join([chr(i) for i in last_sentence_ints])
+                    if char_str not in training_data_char_str:
+                        print('--------THE PRIOR STRING WAS NOT IN THE TRAINING DATA!--------')
+                    last_sentence_ints = []
             else:
                 print(str(chr(max(32, c))), end='', flush=True)
 
@@ -174,7 +184,7 @@ def go(arg):
         if 'spot.txt' in arg.data:
             data_train, data_val, data_test, int_to_token = enwik8(arg.data, 2_000, 1_000, 1_000, tokenize_on=arg.tokenize_data_on)
         else:
-            data_train, data_val, data_test, int_to_token = enwik8(arg.data, 50_000, 10_000, 10_000, tokenize_on=arg.tokenize_data_on)
+            data_train, data_val, data_test, int_to_token = enwik8(arg.data, 20_000, 5_000, 5_000, tokenize_on=arg.tokenize_data_on)
 
     data_train, data_test = (torch.cat([data_train, data_val], dim=0), data_test) \
                             if arg.final else (data_train, data_val)
@@ -185,6 +195,8 @@ def go(arg):
         model.cuda()
 
     opt = torch.optim.Adam(lr=arg.lr, params=model.parameters())
+
+    training_data_char_str = ''.join([chr(i) for i in data_train])
 
     # Linear learning rate warmup
     # sch = torch.optim.lr_scheduler.LambdaLR(opt, lambda i: min(i / (arg.lr_warmup / arg.batch_size), 1.0))
@@ -240,7 +252,7 @@ def go(arg):
                 if torch.cuda.is_available():
                     seed = seed.cuda()
 
-                sequence = sample_sequence(model, seed=seed, max_context=arg.context, verbose=True, length=arg.sample_length, temperature=0, int_to_token=int_to_token)
+                sequence = sample_sequence(model, seed=seed, max_context=arg.context, verbose=True, length=arg.sample_length, temperature=0, int_to_token=int_to_token, training_data_char_str=training_data_char_str)
 
                 if 'spot.txt' in arg.data:
                     sentences = ''.join([chr(n) for n in sequence]).split('.')
@@ -379,7 +391,7 @@ if __name__ == "__main__":
 
     # NOTE We are overriding the passed in args here so that it can be run with the debugger
     options.num_batches = 1_000_000
-    options.batch_size = 16 # his is 32 but mine was 1
+    options.batch_size = 32 # his is 32 but mine was 1
 
     # options.data = 'data/spot.txt'
     options.tokenize_data_on = 'character'
@@ -389,11 +401,17 @@ if __name__ == "__main__":
     # options.tokenize_data_on = 'character'
 
     options.embedding_size = 128 # his is 128 # try this at like 1000 next
-    options.num_heads = 1 # his is 8
+    # options.num_heads = 1 # his is 8
+    # options.context = 64 # his is 256
+    # options.depth = 1 # his is 12 (num of transformer blocks)
+    # options.test_subset = 1_000
+    # options.test_every = 10_000
+
+    options.num_heads = 8 # his is 8
     options.context = 64 # his is 256
-    options.depth = 1 # his is 12 (num of transformer blocks)
+    options.depth = 12 # his is 12 (num of transformer blocks)
     options.test_subset = 1_000
-    options.test_every = 10_000
+    options.test_every = 1_00
 
     print('OPTIONS ', options)
 
