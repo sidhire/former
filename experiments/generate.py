@@ -139,7 +139,13 @@ def go(arg):
     # load the data (validation unless arg.final is true, then test)
     arg.data = here('data/enwik8.gz') if arg.data is None else arg.data
 
-    data_train, data_val, data_test = enwik8(arg.data, 2_000, 1_000, 1_000) if 'spot.txt' in arg.data else enwik8(arg.data)
+    if 'spot.txt' in arg.data:
+        data_train, data_val, data_test = enwik8(arg.data, 2_000, 1_000, 1_000)
+    elif 'simple-english-dataset.txt' in arg.data:
+        data_train, data_val, data_test = enwik8(arg.data, 2_000, 1_000, 1_000)
+    else:
+        data_train, data_val, data_test = enwik8(arg.data)
+
     data_train, data_test = (torch.cat([data_train, data_val], dim=0), data_test) \
                             if arg.final else (data_train, data_val)
 
@@ -338,14 +344,16 @@ if __name__ == "__main__":
     options = parser.parse_args()
 
     # NOTE We are overriding the passed in args here so that it can be run with the debugger
-    options.num_batches = 10_000
-    options.data = 'data/spot.txt'
-    options.embedding_size = 4 # his is 128
+    options.num_batches = 1_000_000
+    options.batch_size = 16 # his is 32 but mine was 1
+    # options.data = 'data/spot.txt'
+    options.data = 'data/simple-english-dataset.txt'
+    options.embedding_size = 128 # his is 128 # try this at like 1000 next
     options.num_heads = 1 # his is 8
-    options.context = 10 # his is 256
+    options.context = 256 # his is 256
     options.depth = 1 # his is 12 (num of transformer blocks)
     options.test_subset = 1_000
-    options.test_every = options.num_batches // 10
+    options.test_every = options.num_batches // 500
 
     print('OPTIONS ', options)
 
