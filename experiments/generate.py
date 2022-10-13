@@ -39,7 +39,7 @@ def sample(lnprobs, temperature=1.0):
 
     return cd.sample()
 
-def enwik8(path, n_train=int(90e6), n_valid=int(5e6), n_test=int(5e6)):
+def enwik8(path, n_train=int(90e6), n_valid=int(5e6), n_test=int(5e6), tokenize_on='character'):
     """
     Load the enwik8 dataset from the Hutter challenge.
 
@@ -51,9 +51,26 @@ def enwik8(path, n_train=int(90e6), n_valid=int(5e6), n_test=int(5e6)):
     :return:
     """
     with gzip.open(path) if path.endswith('.gz') else open(path) as file:
-        X = np.fromstring(file.read(n_train + n_valid + n_test), dtype=np.uint8)
+        if tokenize_on == 'word':
+            text = file.read()
+            text = text.replace('.', ' .')
+            words = text.split(' ')
+            words = words[:n_train + n_valid + n_test]
+            token_to_int = {}
+            int_to_token = {}
+            for i, word in enumerate(words):
+                if word in token_to_int:
+                    continue
+                token_to_int[word] = i
+                int_to_token[i] = word
+            X = np.array([token_to_int[word] for word in words], dtype=np.uint8)
+        elif tokenize_on == 'character':
+            int_to_token = {}
+            X = np.fromstring(file.read(n_train + n_valid + n_test), dtype=np.uint8)
+        else:
+            raise Exception()
         trX, vaX, teX = np.split(X, [n_train, n_train + n_valid])
-        return torch.from_numpy(trX), torch.from_numpy(vaX), torch.from_numpy(teX)
+        return torch.from_numpy(trX), torch.from_numpy(vaX), torch.from_numpy(teX), int_to_token
 
 def sample_batch(data, length, batch_size):
     """
@@ -85,7 +102,7 @@ def sample_batch(data, length, batch_size):
 
     return inputs, target
 
-def sample_sequence(model, seed, max_context, length=600, temperature=0.5, verbose=False):
+def sample_sequence(model, seed, max_context, length=600, temperature=0.5, verbose=False, int_to_token=None):
     """
     Sequentially samples a sequence from the model, token by token.
 
@@ -101,10 +118,15 @@ def sample_sequence(model, seed, max_context, length=600, temperature=0.5, verbo
     sequence = seed.detach().clone()
 
     if verbose: # Print the seed, surrounded by square brackets
-        print('[', end='', flush=True)
+        print('~~~~[', end='', flush=True)
         for c in seed:
-            print(str(chr(c)), end='', flush=True)
-        print(']', end='', flush=True)
+            if int_to_token:
+                i = c.item()
+                token = int_to_token[i] if i in int_to_token else '☐'
+                print(token, end=' ', flush=True)
+            else:
+                print(str(chr(c)), end='', flush=True)
+        print(']~~~~', end='', flush=True)
 
     for _ in range(length):
 
@@ -118,7 +140,12 @@ def sample_sequence(model, seed, max_context, length=600, temperature=0.5, verbo
         c = sample(output[0, -1, :], temperature)
 
         if verbose:
-            print(str(chr(max(32, c))), end='', flush=True)
+            if int_to_token:
+                i = c.item()
+                token = int_to_token[i] if i in int_to_token else '☐'
+                print(token, end=' ', flush=True)
+            else:
+                print(str(chr(max(32, c))), end='', flush=True)
 
         sequence = torch.cat([sequence, c[None]], dim=0) # Append the sampled token to the sequence
 
@@ -137,14 +164,17 @@ def go(arg):
     tbw = SummaryWriter(log_dir=arg.tb_dir) # Tensorboard logging
 
     # load the data (validation unless arg.final is true, then test)
-    arg.data = here('data/enwik8.gz') if arg.data is None else arg.data
+    custom_dataset = arg.data is not None
+    arg.data = arg.data if custom_dataset else here('data/enwik8.gz')
+    # arg.data = here('data/enwik8.gz') if arg.data is None else arg.data
 
-    if 'spot.txt' in arg.data:
-        data_train, data_val, data_test = enwik8(arg.data, 2_000, 1_000, 1_000)
-    elif 'simple-english-dataset.txt' in arg.data:
-        data_train, data_val, data_test = enwik8(arg.data, 2_000, 1_000, 1_000)
+    if not custom_dataset:
+        data_train, data_val, data_test, int_to_token = enwik8(arg.data, tokenize_on=arg.tokenize_data_on)
     else:
-        data_train, data_val, data_test = enwik8(arg.data)
+        if 'spot.txt' in arg.data:
+            data_train, data_val, data_test, int_to_token = enwik8(arg.data, 2_000, 1_000, 1_000, tokenize_on=arg.tokenize_data_on)
+        else:
+            data_train, data_val, data_test, int_to_token = enwik8(arg.data, 50_000, 10_000, 10_000, tokenize_on=arg.tokenize_data_on)
 
     data_train, data_test = (torch.cat([data_train, data_val], dim=0), data_test) \
                             if arg.final else (data_train, data_val)
@@ -210,7 +240,7 @@ def go(arg):
                 if torch.cuda.is_available():
                     seed = seed.cuda()
 
-                sequence = sample_sequence(model, seed=seed, max_context=arg.context, verbose=True, length=arg.sample_length, temperature=0)
+                sequence = sample_sequence(model, seed=seed, max_context=arg.context, verbose=True, length=arg.sample_length, temperature=0, int_to_token=int_to_token)
 
                 if 'spot.txt' in arg.data:
                     sentences = ''.join([chr(n) for n in sequence]).split('.')
@@ -272,6 +302,10 @@ if __name__ == "__main__":
     parser.add_argument("-D", "--data", dest="data",
                         help="Data file. Will be read as a string of 8-bit characters.",
                         default=None)
+
+    parser.add_argument("--tokenize-data-on", dest="tokenize_data_on",
+                        help="character or word",
+                        default="character")
 
     parser.add_argument("-l", "--learn-rate",
                         dest="lr",
@@ -346,14 +380,20 @@ if __name__ == "__main__":
     # NOTE We are overriding the passed in args here so that it can be run with the debugger
     options.num_batches = 1_000_000
     options.batch_size = 16 # his is 32 but mine was 1
+
     # options.data = 'data/spot.txt'
+    options.tokenize_data_on = 'character'
+
     options.data = 'data/simple-english-dataset.txt'
+    options.tokenize_data_on = 'word'
+    # options.tokenize_data_on = 'character'
+
     options.embedding_size = 128 # his is 128 # try this at like 1000 next
     options.num_heads = 1 # his is 8
-    options.context = 256 # his is 256
+    options.context = 64 # his is 256
     options.depth = 1 # his is 12 (num of transformer blocks)
     options.test_subset = 1_000
-    options.test_every = options.num_batches // 500
+    options.test_every = 10_000
 
     print('OPTIONS ', options)
 
