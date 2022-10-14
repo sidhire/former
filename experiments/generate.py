@@ -152,7 +152,7 @@ def sample_sequence(model, seed, max_context, length=600, temperature=0.5, verbo
                     # convert the training data to a char string. also convert the generated sentence to a char string. see if one contains the other.
                     char_str = ''.join([chr(i) for i in last_sentence_ints])
                     if char_str not in training_data_char_str:
-                        print('--------THE PRIOR STRING WAS NOT IN THE TRAINING DATA!--------')
+                        print('[<-- SENTENCE NOT IN TRAINING DATA!]', end=' ', flush=True)
                     last_sentence_ints = []
             else:
                 print(str(chr(max(32, c))), end='', flush=True)
